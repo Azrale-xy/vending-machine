@@ -12,6 +12,7 @@
 import hashlib
 import sys
 from datetime import datetime
+from decimal import Decimal
 from getpass import getpass
 
 # ============================================================
@@ -22,8 +23,7 @@ DB_CONFIG = {
     "port": 3306,
     "user": "root",        # ← 改成你的 MySQL 用户名
     "password": "123456",  # ← 改成你的 MySQL 密码
-    "charset": "utf8mb4",
-    "cursorclass": None,   # 使用默认 cursor
+    "charset": "utf8mb4"
 }
 
 DATABASE_NAME = "vending_machine_db"
@@ -68,7 +68,7 @@ class Database:
 
     # ---------- 表结构初始化 ----------
     def create_tables(self):
-        """执行 DDL，创建全部6张表（如已存在则跳过）"""
+        """执行 DDL，创建全部7张表（如已存在则跳过）"""
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
@@ -149,6 +149,8 @@ class Database:
                             COMMENT '当前库存数量',
                         max_quantity INT NOT NULL DEFAULT 50
                             COMMENT '该货道最大容量',
+                        warning_threshold INT NOT NULL DEFAULT 10
+                            COMMENT '库存预警阈值',
                         FOREIGN KEY (machine_id)
                             REFERENCES vending_machines(machine_id)
                             ON DELETE CASCADE,
@@ -205,8 +207,64 @@ class Database:
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                        COMMENT='订单明细表'
                 """)
+
+                cur.execute("SHOW COLUMNS FROM inventory LIKE 'warning_threshold'")
+                if not cur.fetchone():
+                    cur.execute(
+                        "ALTER TABLE inventory "
+                        "ADD COLUMN warning_threshold INT NOT NULL DEFAULT 10 "
+                        "COMMENT '库存预警阈值'"
+                    )
+
+                # ---- 7. 管理员操作日志表 ----
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS operation_logs (
+                        log_id      INT AUTO_INCREMENT PRIMARY KEY
+                            COMMENT '日志唯一ID',
+                        admin_id    INT NOT NULL
+                            COMMENT '管理员用户ID（外键）',
+                        action      VARCHAR(100) NOT NULL
+                            COMMENT '操作类型',
+                        target      VARCHAR(100) DEFAULT NULL
+                            COMMENT '操作对象',
+                        details     TEXT DEFAULT NULL
+                            COMMENT '操作详情',
+                        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            COMMENT '操作时间',
+                        FOREIGN KEY (admin_id)
+                            REFERENCES users(user_id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                       COMMENT='管理员操作日志表'
+                """)
+                # ---- 8. 用户心愿单表 ----
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS wishlist (
+                        wish_id      INT AUTO_INCREMENT PRIMARY KEY
+                            COMMENT '心愿唯一ID',
+                        user_id      INT NOT NULL
+                            COMMENT '用户ID（外键）',
+                        product_name VARCHAR(100) NOT NULL
+                            COMMENT '期望商品名称',
+                        category     VARCHAR(50)  DEFAULT NULL
+                            COMMENT '商品分类',
+                        description  TEXT          DEFAULT NULL
+                            COMMENT '商品描述/理由',
+                        status       ENUM('pending','approved','rejected')
+                            NOT NULL DEFAULT 'pending'
+                            COMMENT '状态：pending-待审核 / approved-已采纳 / rejected-已拒绝',
+                        admin_note   TEXT DEFAULT NULL
+                            COMMENT '管理员备注',
+                        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            COMMENT '提交时间',
+                        FOREIGN KEY (user_id)
+                            REFERENCES users(user_id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                       COMMENT='用户心愿单表'
+                """)
             conn.commit()
-            print("[OK] 全部6张数据表已就绪")
+            print("[OK] 全部8张数据表已就绪")
         finally:
             conn.close()
 
@@ -599,7 +657,8 @@ class InventoryDAO:
             with conn.cursor(pymysql.cursors.DictCursor) as cur:
                 cur.execute(
                     "SELECT i.inventory_id, i.machine_id, i.product_id, "
-                    "p.name AS product_name, p.price, i.quantity, i.max_quantity "
+                    "p.name AS product_name, p.price, i.quantity, i.max_quantity, "
+                    "i.warning_threshold "
                     "FROM inventory i "
                     "JOIN products p ON i.product_id = p.product_id "
                     "WHERE i.machine_id = %s "
@@ -625,6 +684,233 @@ class InventoryDAO:
                 if not row:
                     return False, 0
                 return row[0] >= needed, row[0]
+        finally:
+            conn.close()
+
+    def list_low_stock(self) -> list:
+        """查询库存低于预警阈值的库存记录"""
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT i.machine_id, vm.name AS machine_name, "
+                    "i.product_id, p.name AS product_name, "
+                    "i.quantity, i.warning_threshold "
+                    "FROM inventory i "
+                    "JOIN products p ON i.product_id = p.product_id "
+                    "JOIN vending_machines vm ON i.machine_id = vm.machine_id "
+                    "WHERE i.quantity < i.warning_threshold "
+                    "ORDER BY i.machine_id, i.product_id"
+                )
+                return cur.fetchall()
+        finally:
+            conn.close()
+
+    def set_warning_threshold(self, machine_id: int, product_id: int,
+                              warning_threshold: int) -> tuple:
+        """设置某货道的库存预警阈值"""
+        if warning_threshold < 0:
+            return False, "预警阈值不能为负数"
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE inventory SET warning_threshold = %s "
+                    "WHERE machine_id = %s AND product_id = %s",
+                    (warning_threshold, machine_id, product_id),
+                )
+                if cur.rowcount == 0:
+                    return False, "未找到该库存记录"
+            conn.commit()
+            return True, "库存预警阈值设置成功"
+        except pymysql.Error as e:
+            return False, f"数据库错误：{e}"
+        finally:
+            conn.close()
+
+
+# ============================================================
+# 管理员操作日志数据访问层 (OperationLogDAO)
+# ============================================================
+class OperationLogDAO:
+    """记录管理员操作日志"""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def record(self, admin_id: int, action: str, target: str = None,
+               details: str = None) -> None:
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO operation_logs "
+                    "(admin_id, action, target, details) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (admin_id, action, target, details),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def list_recent(self, limit: int = 50) -> list:
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT l.log_id, l.admin_id, u.username, l.action, "
+                    "l.target, l.details, l.created_at "
+                    "FROM operation_logs l "
+                    "JOIN users u ON l.admin_id = u.user_id "
+                    "ORDER BY l.created_at DESC "
+                    "LIMIT %s",
+                    (limit,),
+                )
+                return cur.fetchall()
+        finally:
+            conn.close()
+
+
+# ============================================================
+# 用户心愿单数据访问层 (WishlistDAO)
+# ============================================================
+class WishlistDAO:
+    """用户心愿单数据操作"""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def add(self, user_id: int, product_name: str, category: str = None,
+            description: str = None) -> tuple:
+        """提交心愿，返回 (成功?, 消息)"""
+        if not product_name or not product_name.strip():
+            return False, "商品名称不能为空"
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO wishlist (user_id, product_name, category, description) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (user_id, product_name.strip(), category, description),
+                )
+            conn.commit()
+            return True, "心愿已提交，管理员审核后会尽快处理"
+        except pymysql.Error as e:
+            return False, f"数据库错误：{e}"
+        finally:
+            conn.close()
+
+    def get_by_user(self, user_id: int) -> list:
+        """查询某用户的心愿列表"""
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM wishlist WHERE user_id = %s "
+                    "ORDER BY created_at DESC",
+                    (user_id,),
+                )
+                return cur.fetchall()
+        finally:
+            conn.close()
+
+    def list_all(self) -> list:
+        """查询全部心愿（管理员用）"""
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                cur.execute(
+                    "SELECT w.*, u.username "
+                    "FROM wishlist w "
+                    "JOIN users u ON w.user_id = u.user_id "
+                    "ORDER BY w.status ASC, w.created_at DESC"
+                )
+                return cur.fetchall()
+        finally:
+            conn.close()
+
+    def update_status(self, wish_id: int, status: str,
+                      admin_note: str = None) -> tuple:
+        """管理员更新心愿状态，返回 (成功?, 消息)"""
+        if status not in ('pending', 'approved', 'rejected'):
+            return False, "无效状态"
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE wishlist SET status = %s, admin_note = %s "
+                    "WHERE wish_id = %s",
+                    (status, admin_note, wish_id),
+                )
+                if cur.rowcount == 0:
+                    return False, "心愿不存在"
+            conn.commit()
+            return True, "心愿状态已更新"
+        except pymysql.Error as e:
+            return False, f"数据库错误：{e}"
+        finally:
+            conn.close()
+
+
+# ============================================================
+# 销售统计数据访问层 (StatisticsDAO)
+# ============================================================
+class StatisticsDAO:
+    """基于订单表和订单明细表的销售统计"""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def sales_by_product(self, start_date: str = None, end_date: str = None) -> list:
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                sql = (
+                    "SELECT p.product_id, p.name AS product_name, "
+                    "SUM(od.quantity) AS total_quantity, "
+                    "SUM(od.quantity * od.unit_price) AS total_revenue "
+                    "FROM order_details od "
+                    "JOIN orders o ON od.order_id = o.order_id "
+                    "JOIN products p ON od.product_id = p.product_id "
+                    "WHERE o.status = 'completed' "
+                )
+                params = []
+                if start_date:
+                    sql += "AND o.created_at >= %s "
+                    params.append(start_date)
+                if end_date:
+                    sql += "AND o.created_at <= %s "
+                    params.append(end_date)
+                sql += "GROUP BY p.product_id, p.name "
+                sql += "ORDER BY total_quantity DESC"
+                cur.execute(sql, params)
+                return cur.fetchall()
+        finally:
+            conn.close()
+
+    def sales_by_time(self, start_date: str = None, end_date: str = None) -> list:
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor(pymysql.cursors.DictCursor) as cur:
+                sql = (
+                    "SELECT DATE(o.created_at) AS stat_date, "
+                    "SUM(od.quantity) AS total_quantity, "
+                    "SUM(od.quantity * od.unit_price) AS total_revenue "
+                    "FROM orders o "
+                    "JOIN order_details od ON o.order_id = od.order_id "
+                    "WHERE o.status = 'completed' "
+                )
+                params = []
+                if start_date:
+                    sql += "AND o.created_at >= %s "
+                    params.append(start_date)
+                if end_date:
+                    sql += "AND o.created_at <= %s "
+                    params.append(end_date)
+                sql += "GROUP BY DATE(o.created_at) "
+                sql += "ORDER BY DATE(o.created_at) DESC"
+                cur.execute(sql, params)
+                return cur.fetchall()
         finally:
             conn.close()
 
@@ -681,7 +967,7 @@ class OrderDAO:
                 balance = user_row["balance"]
 
                 # ---- 步骤2：计算总金额并校验库存 ----
-                total = 0.0
+                total = Decimal(0)
                 stock_checks = []  # 暂存库存扣减信息
                 for product_id, qty in items:
                     if qty <= 0:
@@ -891,6 +1177,18 @@ def admin_menu(db: Database, user: dict):
     inventory_dao = InventoryDAO(db)
     order_dao = OrderDAO(db)
     user_dao = UserDAO(db)
+    stats_dao = StatisticsDAO(db)
+    log_dao = OperationLogDAO(db)
+
+    low_stock_items = inventory_dao.list_low_stock()
+    if low_stock_items:
+        print("\n[库存预警] 以下货道库存已低于预警阈值，请及时补货：")
+        print(f"{'售货机ID':<10}{'售货机名称':<22}{'商品ID':<8}{'商品名称':<18}{'库存':<8}{'阈值'}")
+        print("-" * 70)
+        for item in low_stock_items:
+            print(f"{item['machine_id']:<10}{item['machine_name']:<22}"
+                  f"{item['product_id']:<8}{item['product_name']:<18}"
+                  f"{item['quantity']:<8}{item['warning_threshold']}")
 
     while True:
         print("\n" + "-" * 48)
@@ -898,20 +1196,26 @@ def admin_menu(db: Database, user: dict):
         print("-" * 48)
         print("  1. 商品管理（添加/修改/删除/查看）")
         print("  2. 售货机管理（添加/修改状态/查看）")
-        print("  3. 库存管理（补货/查看）")
-        print("  4. 查看所有订单")
-        print("  5. 查看所有用户")
+        print("  3. 库存管理（补货/设置阈值/查看）")
+        print("  4. 销售统计（按商品/按时间）")
+        print("  5. 操作日志查看")
+        print("  6. 查看所有订单")
+        print("  7. 查看所有用户")
         print("  0. 退出登录")
         print("-" * 48)
         choice = input("请选择操作：").strip()
 
         if choice == "1":
-            _admin_product_menu(product_dao)
+            _admin_product_menu(product_dao, log_dao, user['user_id'])
         elif choice == "2":
-            _admin_machine_menu(machine_dao)
+            _admin_machine_menu(machine_dao, log_dao, user['user_id'])
         elif choice == "3":
-            _admin_inventory_menu(inventory_dao, product_dao, machine_dao)
+            _admin_inventory_menu(inventory_dao, product_dao, machine_dao, log_dao, user['user_id'])
         elif choice == "4":
+            _admin_sales_menu(stats_dao, log_dao, user['user_id'])
+        elif choice == "5":
+            _admin_log_menu(log_dao)
+        elif choice == "6":
             orders = order_dao.list_all()
             print("\n[订单列表]（最近50条）")
             print(f"{'订单号':<8}{'用户':<14}{'售货机':<22}{'金额':<10}{'状态':<12}{'时间'}")
@@ -922,7 +1226,9 @@ def admin_menu(db: Database, user: dict):
                       f"{o['status']:<12}{str(o['created_at'])}")
             if not orders:
                 print("  （暂无订单记录）")
-        elif choice == "5":
+            else:
+                log_dao.record(user['user_id'], '查看订单列表', 'orders', '管理员查看最近50条订单')
+        elif choice == "7":
             users = user_dao.list_all()
             print("\n[用户列表]")
             print(f"{'ID':<6}{'用户名':<16}{'角色':<8}{'余额':<10}{'手机号':<14}{'邮箱'}")
@@ -930,6 +1236,7 @@ def admin_menu(db: Database, user: dict):
             for u in users:
                 print(f"{u['user_id']:<6}{u['username']:<16}{u['role']:<8}"
                       f"¥{u['balance']:<9.2f}{u['phone'] or '-':<14}{u['email'] or '-'}")
+            log_dao.record(user['user_id'], '查看用户列表', 'users', '管理员查看全部用户信息')
         elif choice == "0":
             print("已退出管理员登录。\n")
             break
@@ -937,7 +1244,7 @@ def admin_menu(db: Database, user: dict):
             print("无效选项，请重新输入。")
 
 
-def _admin_product_menu(product_dao: ProductDAO):
+def _admin_product_menu(product_dao: ProductDAO, log_dao: OperationLogDAO, admin_id: int):
     """管理员 - 商品管理子菜单"""
     while True:
         print("\n  >>> 商品管理")
@@ -967,6 +1274,8 @@ def _admin_product_menu(product_dao: ProductDAO):
                 continue
             ok, msg = product_dao.add(name, cat, desc, price)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '添加商品', name, msg)
         elif sub == "3":
             pid = _input_int("  要修改的商品ID：")
             if pid is None:
@@ -987,19 +1296,23 @@ def _admin_product_menu(product_dao: ProductDAO):
             price = float(price_str) if price_str else old["price"]
             ok, msg = product_dao.update(pid, name, cat, desc, price)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '修改商品', f'product_id={pid}', msg)
         elif sub == "4":
             pid = _input_int("  要删除的商品ID：")
             if pid is None:
                 continue
             ok, msg = product_dao.delete(pid)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '删除商品', f'product_id={pid}', msg)
         elif sub == "0":
             break
         else:
             print("  无效选项")
 
 
-def _admin_machine_menu(machine_dao: MachineDAO):
+def _admin_machine_menu(machine_dao: MachineDAO, log_dao: OperationLogDAO, admin_id: int):
     """管理员 - 售货机管理子菜单"""
     while True:
         print("\n  >>> 售货机管理")
@@ -1022,6 +1335,8 @@ def _admin_machine_menu(machine_dao: MachineDAO):
             cap = _input_int("  最大容量（默认100）：", 100)
             ok, msg = machine_dao.add(name, loc, cap)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '添加售货机', name, msg)
         elif sub == "3":
             mid = _input_int("  售货机ID：")
             if mid is None:
@@ -1030,6 +1345,8 @@ def _admin_machine_menu(machine_dao: MachineDAO):
             status = input("  新状态：").strip()
             ok, msg = machine_dao.update_status(mid, status)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '修改售货机状态', f'machine_id={mid}', msg)
         elif sub == "0":
             break
         else:
@@ -1037,12 +1354,14 @@ def _admin_machine_menu(machine_dao: MachineDAO):
 
 
 def _admin_inventory_menu(inv_dao: InventoryDAO, prod_dao: ProductDAO,
-                          machine_dao: MachineDAO):
+                          machine_dao: MachineDAO, log_dao: OperationLogDAO,
+                          admin_id: int):
     """管理员 - 库存管理子菜单"""
     while True:
         print("\n  >>> 库存管理")
         print("    1. 查看售货机库存   2. 补货/上架")
-        print("    3. 直接设置库存     0. 返回上级")
+        print("    3. 设置预警阈值     4. 直接设置库存")
+        print("    0. 返回上级")
         sub = input("  请选择：").strip()
         if sub == "1":
             mid = _input_int("  售货机ID：")
@@ -1050,11 +1369,11 @@ def _admin_inventory_menu(inv_dao: InventoryDAO, prod_dao: ProductDAO,
                 continue
             items = inv_dao.get_by_machine(mid)
             print(f"\n  售货机 #{mid} 库存：")
-            print(f"  {'商品ID':<8}{'商品名称':<18}{'单价':<10}{'库存':<8}{'最大容量'}")
-            print("  " + "-" * 54)
+            print(f"  {'商品ID':<8}{'商品名称':<18}{'单价':<10}{'库存':<8}{'最大容量':<10}{'预警阈值'}")
+            print("  " + "-" * 70)
             for it in items:
                 print(f"  {it['product_id']:<8}{it['product_name']:<18}"
-                      f"¥{it['price']:<9.2f}{it['quantity']:<8}{it['max_quantity']}")
+                      f"¥{it['price']:<9.2f}{it['quantity']:<8}{it['max_quantity']:<10}{it.get('warning_threshold', 10)}")
             if not items:
                 print("  （该售货机暂无库存记录）")
         elif sub == "2":
@@ -1070,7 +1389,24 @@ def _admin_inventory_menu(inv_dao: InventoryDAO, prod_dao: ProductDAO,
                 continue
             ok, msg = inv_dao.add_or_update(mid, pid, qty)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '补货/上架', f'machine_id={mid},product_id={pid}', msg)
         elif sub == "3":
+            mid = _input_int("  售货机ID：")
+            if mid is None:
+                continue
+            pid = _input_int("  商品ID：")
+            if pid is None:
+                continue
+            threshold = _input_int("  预警阈值：")
+            if threshold is None or threshold < 0:
+                print("  阈值不能为负数")
+                continue
+            ok, msg = inv_dao.set_warning_threshold(mid, pid, threshold)
+            print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '设置库存预警阈值', f'machine_id={mid},product_id={pid}', msg)
+        elif sub == "4":
             mid = _input_int("  售货机ID：")
             if mid is None:
                 continue
@@ -1083,14 +1419,66 @@ def _admin_inventory_menu(inv_dao: InventoryDAO, prod_dao: ProductDAO,
                 continue
             ok, msg = inv_dao.update_stock(mid, pid, qty)
             print(f"  {'[OK]' if ok else '[FAIL]'} {msg}")
+            if ok:
+                log_dao.record(admin_id, '设置库存数量', f'machine_id={mid},product_id={pid}', msg)
         elif sub == "0":
             break
         else:
             print("  无效选项")
 
 
-# ---------- 普通用户菜单 ----------
-def user_menu(db: Database, user: dict):
+def _admin_sales_menu(stats_dao: StatisticsDAO, log_dao: OperationLogDAO,
+                      admin_id: int):
+    """管理员 - 销售统计子菜单"""
+    while True:
+        print("\n  >>> 销售统计")
+        print("    1. 按商品统计销量    2. 按日期统计销量")
+        print("    0. 返回上级")
+        sub = input("  请选择：").strip()
+        if sub == "1":
+            start_date = input("  起始日期（YYYY-MM-DD，留空表示不限）：").strip() or None
+            end_date = input("  截止日期（YYYY-MM-DD，留空表示不限）：").strip() or None
+            stats = stats_dao.sales_by_product(start_date, end_date)
+            print("\n  [按商品销售统计]")
+            print(f"  {'商品ID':<8}{'商品名称':<20}{'销量':<10}{'销售额'}")
+            print("  " + "-" * 58)
+            for row in stats:
+                print(f"  {row['product_id']:<8}{row['product_name']:<20}"
+                      f"{row['total_quantity']:<10}{row['total_revenue']:.2f}")
+            if not stats:
+                print("  （暂无销售记录）")
+            log_dao.record(admin_id, '查看销售统计', '按商品统计', f'起始={start_date} 结束={end_date}')
+        elif sub == "2":
+            start_date = input("  起始日期（YYYY-MM-DD，留空表示不限）：").strip() or None
+            end_date = input("  截止日期（YYYY-MM-DD，留空表示不限）：").strip() or None
+            stats = stats_dao.sales_by_time(start_date, end_date)
+            print("\n  [按日期销售统计]")
+            print(f"  {'日期':<14}{'销量':<10}{'销售额'}")
+            print("  " + "-" * 42)
+            for row in stats:
+                print(f"  {row['stat_date']:<14}{row['total_quantity']:<10}"
+                      f"{row['total_revenue']:.2f}")
+            if not stats:
+                print("  （暂无销售记录）")
+            log_dao.record(admin_id, '查看销售统计', '按时间统计', f'起始={start_date} 结束={end_date}')
+        elif sub == "0":
+            break
+        else:
+            print("  无效选项")
+
+
+def _admin_log_menu(log_dao: OperationLogDAO):
+    """管理员 - 操作日志查看"""
+    logs = log_dao.list_recent()
+    print("\n  [管理员操作日志]（最近50条）")
+    print(f"  {'日志ID':<8}{'管理员':<14}{'操作':<18}{'对象':<22}{'时间'}")
+    print("  " + "-" * 80)
+    for row in logs:
+        details = row['details'] or '-'
+        print(f"  {row['log_id']:<8}{row['username']:<14}{row['action']:<18}"
+              f"{row['target'] or '-':<22}{row['created_at']}")
+        if details:
+            print(f"    详情：{details}")
     """普通用户功能界面"""
     product_dao = ProductDAO(db)
     machine_dao = MachineDAO(db)
@@ -1132,7 +1520,7 @@ def user_menu(db: Database, user: dict):
             if not items:
                 print("该售货机暂无商品。")
                 continue
-            print(f"\n{'商品ID':<8}{'名称':<18}{'单价':<10}{{'库存'}}")
+            print(f"\n{'商品ID':<8}{'名称':<18}{'单价':<10}{'库存'}")
             print("-" * 44)
             for it in items:
                 print(f"{it['product_id']:<8}{it['product_name']:<18}"

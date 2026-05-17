@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自动售货机管理系统</title>
+<style>
+:root {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --text: #1e293b;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Layout */
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 100; }
+.header .logo { font-size: 18px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+.header .user-info { display: flex; align-items: center; gap: 16px; font-size: 14px; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+.badge-admin { background: #ede9fe; color: var(--primary); }
+.badge-user { background: #dbeafe; color: #2563eb; }
+.badge-online { background: #d1fae5; color: #059669; }
+.badge-offline { background: #fee2e2; color: #dc2626; }
+.badge-maintenance { background: #fef3c7; color: #d97706; }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; border: 1px solid var(--border); }
+.card h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+.card h2 { font-size: 20px; margin-bottom: 20px; }
+
+/* Login */
+.login-box { max-width: 400px; margin: 80px auto; }
+.login-box h1 { text-align: center; color: var(--primary); margin-bottom: 8px; font-size: 24px; }
+.login-box .subtitle { text-align: center; color: var(--muted); margin-bottom: 28px; font-size: 14px; }
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; color: var(--text); }
+.form-control { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 14px; transition: border-color .15s; outline: none; background: #fafbfc; }
+.form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+select.form-control { cursor: pointer; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 18px; border: none; border-radius: 7px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s; white-space: nowrap; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover:not(:disabled) { background: #059669; }
+.btn-outline { background: #fff; color: var(--text); border: 1px solid var(--border); }
+.btn-outline:hover:not(:disabled) { background: var(--bg); }
+.btn-sm { padding: 5px 12px; font-size: 13px; }
+.btn-xs { padding: 3px 8px; font-size: 12px; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--border); margin-bottom: 24px; }
+.tab { padding: 10px 20px; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+th { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+tr:hover { background: #f8fafc; }
+
+/* Alerts */
+.alert { padding: 12px 16px; border-radius: 7px; font-size: 14px; margin-bottom: 16px; }
+.alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.alert-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.alert-info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+.alert-warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+/* Empty state */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+
+/* Cart */
+.cart-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.cart-item:last-child { border-bottom: none; }
+.cart-total { font-size: 16px; font-weight: 700; margin-top: 12px; text-align: right; padding-top: 12px; border-top: 2px solid var(--border); }
+
+/* Modal overlay */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 200; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--card); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0,0,0,.15); padding: 28px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal h3 { margin-bottom: 20px; }
+
+/* Misc */
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.flex-between-wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 16px; }
+.mt-4 { margin-top: 24px; }
+.text-muted { color: var(--muted); font-size: 13px; }
+.text-success { color: var(--success); }
+.text-danger { color: var(--danger); }
+.text-warning { color: var(--warning); }
+.mr-2 { margin-right: 8px; }
+.ml-auto { margin-left: auto; }
+.hidden { display: none !important; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; border: 1px solid var(--border); text-align: center; }
+.stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.stat-card .stat-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<header class="header" id="header">
+  <div class="logo">&#x1F36B; 自动售货机管理系统</div>
+  <div class="user-info" id="header-user"></div>
+</header>
+
+<!-- ========== Main Container ========== -->
+<div class="container" id="app"></div>
+
+<!-- ========== Modal ========== -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let currentUser = null;
+let cart = [];
+
+// ============================================================
+// API helpers
+// ============================================================
+async function api(url, opts = {}) {
+  try {
+    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, message: '网络错误：无法连接服务器' };
+  }
+}
+
+// ============================================================
+// UI helpers
+// ============================================================
+function showAlert(type, msg) {
+  const div = document.createElement('div');
+  div.className = `alert alert-${type}`;
+  div.textContent = msg;
+  setTimeout(() => div.remove(), 4000);
+  const app = document.getElementById('app');
+  app.insertBefore(div, app.firstChild);
+}
+
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+// ============================================================
+// Modal
+// ============================================================
+function openModal(title, bodyHtml, onSave) {
+  $('#modal-content').innerHTML = `<h3>${title}</h3>${bodyHtml}`;
+  $('#modal-overlay').classList.add('show');
+  const saveBtn = $('#modal-content').querySelector('.btn-save');
+  if (saveBtn && onSave) {
+    saveBtn.addEventListener('click', async () => {
+      const result = await onSave();
+      if (result !== false) closeModal();
+    });
+  }
+}
+function closeModal() { $('#modal-overlay').classList.remove('show'); }
+
+// ============================================================
+// Init
+// ============================================================
+async function init() {
+  const res = await api('/api/session');
+  if (res.ok && res.data) {
+    currentUser = res.data;
+    updateHeader();
+    if (currentUser.role === 'admin') renderAdmin();
+    else renderUser();
+  } else {
+    renderLogin();
+  }
+}
+
+function updateHeader() {
+  if (!currentUser) {
+    $('#header-user').innerHTML = '';
+    return;
+  }
+  const roleBadge = currentUser.role === 'admin'
+    ? '<span class="badge badge-admin">管理员</span>'
+    : '<span class="badge badge-user">用户</span>';
+  const balance = currentUser.role === 'user'
+    ? ` | 余额：<strong>¥${currentUser.balance.toFixed(2)}</strong>`
+    : '';
+  $('#header-user').innerHTML = `
+    ${roleBadge}
+    <span>${currentUser.username}</span>
+    ${balance}
+    <button class="btn btn-outline btn-sm" onclick="logout()">退出</button>
+  `;
+}
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  currentUser = null;
+  cart = [];
+  updateHeader();
+  renderLogin();
+}
+
+// ============================================================
+// Login & Register
+// ============================================================
+function renderLogin() {
+  currentUser = null;
+  cart = [];
+  updateHeader();
+  $('#app').innerHTML = `
+    <div class="login-box">
+      <div class="card">
+        <h1>&#x1F36B;</h1>
+        <p class="subtitle">自动售货机管理系统</p>
+        <div id="login-form">
+          <div class="form-group"><label>用户名</label><input class="form-control" id="login-username" placeholder="请输入用户名"></div>
+          <div class="form-group"><label>密码</label><input class="form-control" id="login-password" type="password" placeholder="请输入密码" onkeydown="if(event.key==='Enter')doLogin()"></div>
+          <button class="btn btn-primary" style="width:100%" onclick="doLogin()">登 录</button>
+          <p class="text-muted mt-3" style="text-align:center">
+            还没有账号？<a href="javascript:showRegister()">立即注册</a>
+          </p>
+          <p class="text-muted" style="text-align:center;margin-top:4px">
+            演示账号：admin / admin123 或 test / test123
+          </p>
+        </div>
+        <div id="register-form" class="hidden">
+          <div class="form-group"><label>用户名</label><input class="form-control" id="reg-username" placeholder="请输入用户名"></div>
+          <div class="form-group"><label>密码</label><input class="form-control" id="reg-password" type="password" placeholder="至少4位"></div>
+          <div class="form-group"><label>手机号</label><input class="form-control" id="reg-phone" placeholder="选填"></div>
+          <div class="form-group"><label>邮箱</label><input class="form-control" id="reg-email" placeholder="选填"></div>
+          <button class="btn btn-primary" style="width:100%" onclick="doRegister()">注 册</button>
+          <p class="text-muted mt-3" style="text-align:center">
+            已有账号？<a href="javascript:showLogin()">去登录</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showRegister() {
+  $('#login-form').classList.add('hidden');
+  $('#register-form').classList.remove('hidden');
+}
+function showLogin() {
+  $('#register-form').classList.add('hidden');
+  $('#login-form').classList.remove('hidden');
+}
+
+async function doLogin() {
+  const username = $('#login-username').value.trim();
+  const password = $('#login-password').value;
+  if (!username || !password) { showAlert('error', '请输入用户名和密码'); return; }
+  const res = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+  if (!res.ok) { showAlert('error', res.message); return; }
+  currentUser = res.data;
+  updateHeader();
+  if (currentUser.role === 'admin') renderAdmin(); else renderUser();
+}
+
+async function doRegister() {
+  const username = $('#reg-username').value.trim();
+  const password = $('#reg-password').value;
+  if (!username || !password) { showAlert('error', '请输入用户名和密码'); return; }
+  const res = await api('/api/register', { method: 'POST', body: JSON.stringify({
+    username, password,
+    phone: $('#reg-phone').value.trim(),
+    email: $('#reg-email').value.trim()
+  })});
+  if (!res.ok) { showAlert('error', res.message); return; }
+  showAlert('success', res.message + '，请登录');
+  showLogin();
+  $('#login-username').value = username;
+  $('#login-password').value = '';
+}
+
+// ============================================================
+// User Dashboard
+// ============================================================
+async function refreshBalance() {
+  const res = await api('/api/user/profile');
+  if (res.ok && res.data) {
+    currentUser.balance = res.data.balance;
+    updateHeader();
+  }
+}
+
+function renderUser() {
+  cart = [];
+  $('#app').innerHTML = `
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('shop', this)">&#x1F6D2; 购物</button>
+      <button class="tab" onclick="switchTab('orders', this)">&#x1F4CB; 我的订单</button>
+      <button class="tab" onclick="switchTab('wishlist', this)">&#x2B50; 心愿单</button>
+      <button class="tab" onclick="switchTab('account', this)">&#x2699; 账户</button>
+    </div>
+    <div id="tab-shop"></div>
+    <div id="tab-orders" class="hidden"></div>
+    <div id="tab-wishlist" class="hidden"></div>
+    <div id="tab-account" class="hidden"></div>
+  `;
+  loadShopMachines();
+}
+
+function switchTab(name, btn) {
+  $$('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['shop','orders','wishlist','account'].forEach(t => $(`#tab-${t}`).classList.add('hidden'));
+  $(`#tab-${name}`).classList.remove('hidden');
+  if (name === 'shop') loadShopMachines();
+  if (name === 'orders') loadMyOrders();
+  if (name === 'wishlist') renderWishlist();
+  if (name === 'account') renderAccount();
+}
+
+// -- Shop --
+async function loadShopMachines() {
+  if (cart.length > 0) { renderShopCart(); return; }
+  const res = await api('/api/machines');
+  let html = '<h3>选择售货机</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无在线售货机</div>';
+  } else {
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
+    for (const m of res.data) {
+      html += `
+        <div class="card" style="cursor:pointer;transition:transform .15s;margin:0" onmouseenter="this.style.transform='translateY(-2px)'" onmouseleave="this.style.transform=''" onclick="loadProducts(${m.machine_id},'${m.name}')">
+          <h3>${m.name}</h3>
+          <p class="text-muted">&#x1F4CD; ${m.location || '未设置位置'}</p>
+          <span class="badge badge-online">在线</span>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  $('#tab-shop').innerHTML = html;
+}
+
+async function loadProducts(machineId, machineName) {
+  cart = [];
+  const res = await api(`/api/machines/${machineId}/products`);
+  let html = `
+    <div class="flex-between-wrap mb-2">
+      <div><a href="javascript:loadShopMachines()" class="mr-2">&larr; 返回</a> <strong>${machineName}</strong></div>
+    </div>`;
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">该售货机暂无商品</div>';
+  } else {
+    // Search
+    const searchId = `search-${machineId}`;
+    html += `<div class="form-group mt-2"><input class="form-control" id="${searchId}" placeholder="搜索商品..." oninput="filterProducts('${searchId}', 'list-${machineId}')"></div>`;
+    html += `<div id="list-${machineId}">`;
+    for (const p of res.data) {
+      html += `
+        <div class="card product-item" style="margin-bottom:10px">
+          <div class="flex-between-wrap">
+            <div><strong>${p.product_name}</strong></div>
+            <div style="text-align:right"><span style="font-size:18px;font-weight:700;color:var(--danger)">¥${p.price.toFixed(2)}</span><br><span class="text-muted">库存：${p.quantity}件</span></div>
+          </div>
+          <div class="flex-between-wrap mt-2" style="align-items:center">
+            <div class="qty-stepper" style="display:flex;align-items:center;gap:6px">
+              <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();stepperChange('qty-${machineId}-${p.product_id}', -1, ${p.quantity})">-</button>
+              <input class="form-control" id="qty-${machineId}-${p.product_id}" type="number" value="1" min="1" max="${p.quantity}" style="width:60px;text-align:center;padding:4px 6px" onchange="stepperValidate('qty-${machineId}-${p.product_id}', ${p.quantity})">
+              <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();stepperChange('qty-${machineId}-${p.product_id}', 1, ${p.quantity})">+</button>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();addToCart(${machineId},${p.product_id},'${p.product_name}',${p.price},${p.quantity},'qty-${machineId}-${p.product_id}')">加入购物车</button>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  html += `<div class="card mt-2 hidden" id="cart-bar" style="padding:14px 24px;display:flex;align-items:center;justify-content:space-between">
+    <span>&#x1F6D2; 已选 <strong id="cart-count">0</strong> 种商品，合计 <strong id="cart-total">¥0.00</strong></span>
+    <button class="btn btn-primary btn-sm" onclick="renderShopCart()">去结算</button>
+  </div>`;
+  $('#tab-shop').innerHTML = html;
+}
+
+function filterProducts(searchId, listId) {
+  const q = document.getElementById(searchId).value.toLowerCase();
+  document.querySelectorAll(`#${listId} .product-item`).forEach(el => {
+    el.classList.toggle('hidden', !el.textContent.toLowerCase().includes(q));
+  });
+}
+
+function addToCart(machineId, productId, name, price, stock, qtyInputId) {
+  const qty = qtyInputId ? parseInt(document.getElementById(qtyInputId).value) || 1 : 1;
+  const existing = cart.find(c => c.product_id === productId);
+  if (existing) {
+    if (existing.quantity + qty > stock) { showAlert('error', `库存不足（库存${stock}件，购物车已有${existing.quantity}件）`); return; }
+    existing.quantity += qty;
+  } else {
+    if (qty > stock) { showAlert('error', '库存不足'); return; }
+    cart.push({ machine_id: machineId, product_id: productId, product_name: name, price: price, quantity: qty, stock: stock });
+  }
+  if (qtyInputId) document.getElementById(qtyInputId).value = 1;
+  updateCartBar();
+  showAlert('success', `已添加 ${qty} 件「${name}」到购物车`);
+}
+
+function stepperChange(inputId, delta, max) {
+  const el = document.getElementById(inputId);
+  let v = parseInt(el.value) || 1;
+  v = Math.max(1, Math.min(max, v + delta));
+  el.value = v;
+}
+
+function stepperValidate(inputId, max) {
+  const el = document.getElementById(inputId);
+  let v = parseInt(el.value) || 1;
+  el.value = Math.max(1, Math.min(max, v));
+}
+
+function updateCartBar() {
+  const bar = $('#cart-bar');
+  if (!bar) return;
+  if (cart.length === 0) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  $('#cart-count').textContent = cart.length;
+  const total = cart.reduce((s, c) => s + c.price * c.quantity, 0);
+  $('#cart-total').textContent = `¥${total.toFixed(2)}`;
+}
+
+function renderShopCart() {
+  let html = '<h3>&#x1F6D2; 购物车</h3>';
+  if (cart.length === 0) {
+    html += '<div class="empty">购物车为空</div>';
+    html += '<button class="btn btn-outline mt-3" onclick="loadShopMachines()">&larr; 浏览商品</button>';
+  } else {
+    let total = 0;
+    html += '<div class="card">';
+    for (const c of cart) {
+      const subtotal = c.price * c.quantity;
+      total += subtotal;
+      html += `
+        <div class="cart-item">
+          <div><strong>${c.product_name}</strong><br><span class="text-muted">¥${c.price.toFixed(2)} x ${c.quantity} = ¥${subtotal.toFixed(2)}</span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-outline btn-xs" onclick="updateCartQty(${c.product_id},-1)">-</button>
+            <span style="min-width:24px;text-align:center">${c.quantity}</span>
+            <button class="btn btn-outline btn-xs" onclick="updateCartQty(${c.product_id},1)">+</button>
+            <button class="btn btn-danger btn-xs" onclick="removeCartItem(${c.product_id})">&times;</button>
+          </div>
+        </div>`;
+    }
+    html += `<div class="cart-total">合计：¥${total.toFixed(2)}</div>`;
+    html += '</div>';
+    html += `<div class="btn-group">
+      <button class="btn btn-outline" onclick="loadShopMachines()">继续选购</button>
+      <button class="btn btn-primary" onclick="checkout()">确认购买 (¥${total.toFixed(2)})</button>
+    </div>`;
+  }
+  $('#tab-shop').innerHTML = html;
+}
+
+function updateCartQty(productId, delta) {
+  const c = cart.find(c => c.product_id === productId);
+  if (!c) return;
+  c.quantity += delta;
+  if (c.quantity < 1) cart = cart.filter(c => c.product_id !== productId);
+  else if (c.quantity > c.stock) { c.quantity -= delta; showAlert('error', '库存不足'); return; }
+  renderShopCart();
+}
+
+function removeCartItem(productId) {
+  cart = cart.filter(c => c.product_id !== productId);
+  renderShopCart();
+}
+
+async function checkout() {
+  if (cart.length === 0) return;
+  if (!confirm(`确认购买 ${cart.length} 种商品，合计 ¥${cart.reduce((s,c)=>s+c.price*c.quantity,0).toFixed(2)}？`)) return;
+  const res = await api('/api/orders', { method: 'POST', body: JSON.stringify({
+    machine_id: cart[0].machine_id,
+    items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity }))
+  })});
+  if (!res.ok) {
+    if (res.error_code === 'insufficient_balance') {
+      openModal('余额不足', `
+        <div style="text-align:center;padding:20px 0">
+          <p style="font-size:36px;margin-bottom:16px">&#x1F4B0;</p>
+          <p style="font-size:18px;font-weight:600;color:var(--danger);margin-bottom:12px">余额不足，请充值</p>
+          <p class="text-muted">${res.message}</p>
+        </div>
+        <div class="btn-group" style="justify-content:center">
+          <button class="btn btn-primary" onclick="closeModal();switchTab('account',$$('.tab')[3])">去充值</button>
+          <button class="btn btn-outline" onclick="closeModal()">取消</button>
+        </div>
+      `);
+      return;
+    }
+    showAlert('error', res.message); return;
+  }
+  showAlert('success', res.message);
+  cart = [];
+  if (res.balance !== undefined) {
+    currentUser.balance = res.balance;
+    updateHeader();
+  }
+  loadShopMachines();
+}
+
+// -- My Orders --
+async function loadMyOrders() {
+  const res = await api('/api/orders/my');
+  let html = '<h3>我的订单</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无订单</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>售货机</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>';
+    for (const o of res.data) {
+      html += `<tr>
+        <td>#${o.order_id}</td>
+        <td>${o.machine_name}</td>
+        <td><strong>¥${o.total_amount.toFixed(2)}</strong></td>
+        <td>${o.status}</td>
+        <td>${o.created_at}</td>
+        <td><button class="btn btn-outline btn-xs" onclick="viewOrderDetail(${o.order_id})">详情</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#tab-orders').innerHTML = html;
+}
+
+async function viewOrderDetail(orderId) {
+  const res = await api(`/api/orders/${orderId}`);
+  if (!res.ok) { showAlert('error', res.message); return; }
+  const o = res.data.order;
+  let html = `<div><strong>订单 #${o.order_id}</strong></div>`;
+  html += `<div class="text-muted mt-2">用户：${o.username} | 售货机：${o.machine_name}</div>`;
+  html += `<div class="text-muted">金额：¥${o.total_amount.toFixed(2)} | 状态：${o.status} | 时间：${o.created_at}</div>`;
+  html += '<table class="mt-3"><thead><tr><th>商品</th><th>数量</th><th>单价</th><th>小计</th></tr></thead><tbody>';
+  for (const d of res.data.details) {
+    html += `<tr><td>${d.product_name}</td><td>${d.quantity}</td><td>¥${d.unit_price.toFixed(2)}</td><td>¥${(d.quantity*d.unit_price).toFixed(2)}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  openModal(`订单详情 #${orderId}`, html);
+}
+
+// -- Account --
+function renderAccount() {
+  $('#tab-account').innerHTML = `
+    <div class="card">
+      <h3>账户充值</h3>
+      <div class="form-group"><label>充值金额</label><input class="form-control" id="recharge-amount" type="number" step="0.01" min="0.01" placeholder="请输入金额"></div>
+      <div class="btn-group">
+        <button class="btn btn-outline btn-sm" onclick="quickRecharge(10)">¥10</button>
+        <button class="btn btn-outline btn-sm" onclick="quickRecharge(50)">¥50</button>
+        <button class="btn btn-outline btn-sm" onclick="quickRecharge(100)">¥100</button>
+      </div>
+      <button class="btn btn-primary mt-3" onclick="doRecharge()">确认充值</button>
+    </div>
+    <div class="card">
+      <h3>修改密码</h3>
+      <div class="form-group"><label>当前密码</label><input class="form-control" id="cp-old" type="password"></div>
+      <div class="form-group"><label>新密码</label><input class="form-control" id="cp-new" type="password" placeholder="至少4位"></div>
+      <button class="btn btn-primary" onclick="doChangePassword()">修改密码</button>
+    </div>
+  `;
+}
+
+function quickRecharge(amount) {
+  $('#recharge-amount').value = amount;
+}
+
+async function doRecharge() {
+  const amount = parseFloat($('#recharge-amount').value);
+  if (!amount || amount <= 0) { showAlert('error', '请输入有效金额'); return; }
+  const res = await api('/api/user/recharge', { method: 'POST', body: JSON.stringify({ amount }) });
+  if (res.ok) {
+    showAlert('success', res.message);
+    currentUser.balance = res.balance;
+    updateHeader();
+    $('#recharge-amount').value = '';
+  } else {
+    showAlert('error', res.message);
+  }
+}
+
+async function doChangePassword() {
+  const old_password = $('#cp-old').value;
+  const new_password = $('#cp-new').value;
+  if (!new_password) { showAlert('error', '请输入新密码'); return; }
+  const res = await api('/api/user/password', { method: 'PUT', body: JSON.stringify({ old_password, new_password }) });
+  if (res.ok) { showAlert('success', res.message); $('#cp-old').value=''; $('#cp-new').value=''; }
+  else showAlert('error', res.message);
+}
+
+// -- Wishlist --
+function renderWishlist() {
+  let html = `<div class="flex-between-wrap mb-2"><h3>&#x2B50; 我的心愿单</h3><button class="btn btn-primary btn-sm" onclick="showAddWish()">+ 提交心愿</button></div>`;
+  html += '<div id="wishlist-items"><div class="empty">加载中...</div></div>';
+  $('#tab-wishlist').innerHTML = html;
+  loadMyWishes();
+}
+
+async function loadMyWishes() {
+  const res = await api('/api/wishlist/my');
+  let html = '';
+  if (!res.ok || res.data.length === 0) {
+    html = '<div class="empty">暂无心愿，点击上方按钮提交你想要加入售货机的商品</div>';
+  } else {
+    html = '<div class="table-wrap"><table><thead><tr><th>商品名称</th><th>分类</th><th>描述</th><th>状态</th><th>管理员备注</th><th>提交时间</th></tr></thead><tbody>';
+    const statusBadge = { pending: 'badge-maintenance', approved: 'badge-online', rejected: 'badge-offline' };
+    for (const w of res.data) {
+      html += `<tr>
+        <td><strong>${w.product_name}</strong></td>
+        <td>${w.category||'-'}</td>
+        <td>${w.description||'-'}</td>
+        <td><span class="badge ${statusBadge[w.status]||''}">${w.status_text}</span></td>
+        <td class="text-muted">${w.admin_note||'-'}</td>
+        <td>${w.created_at}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#wishlist-items').innerHTML = html;
+}
+
+function showAddWish() {
+  openModal('提交心愿', `
+    <div class="form-group"><label>商品名称 *</label><input class="form-control" id="wish-name" placeholder="你想在售货机中看到什么商品？"></div>
+    <div class="form-group"><label>商品分类</label><input class="form-control" id="wish-cat" placeholder="如：饮料、零食、食品"></div>
+    <div class="form-group"><label>描述/理由</label><textarea class="form-control" id="wish-desc" rows="3" placeholder="简单描述一下（选填）"></textarea></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">提交</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const product_name = $('#wish-name').value.trim();
+    if (!product_name) { showAlert('error', '请输入商品名称'); return false; }
+    const res = await api('/api/wishlist', { method: 'POST', body: JSON.stringify({
+      product_name, category: $('#wish-cat').value.trim(), description: $('#wish-desc').value.trim()
+    })});
+    if (res.ok) { showAlert('success', res.message); loadMyWishes(); }
+    else showAlert('error', res.message);
+  });
+}
+
+// ============================================================
+// Admin Dashboard
+// ============================================================
+function renderAdmin() {
+  $('#app').innerHTML = `
+    <div class="tabs">
+      <button class="tab active" onclick="switchAdminTab('products', this)">&#x1F4E6; 商品管理</button>
+      <button class="tab" onclick="switchAdminTab('machines', this)">&#x1F5B1; 售货机</button>
+      <button class="tab" onclick="switchAdminTab('inventory', this)">&#x1F4CA; 库存</button>
+      <button class="tab" onclick="switchAdminTab('orders', this)">&#x1F4CB; 订单</button>
+      <button class="tab" onclick="switchAdminTab('stats', this)">&#x1F4C8; 统计</button>
+      <button class="tab" onclick="switchAdminTab('logs', this)">&#x1F4DD; 日志</button>
+      <button class="tab" onclick="switchAdminTab('wishlist', this)">&#x2B50; 心愿单</button>
+      <button class="tab" onclick="switchAdminTab('users', this)">&#x1F465; 用户</button>
+    </div>
+    <div id="admin-products"></div>
+    <div id="admin-machines" class="hidden"></div>
+    <div id="admin-inventory" class="hidden"></div>
+    <div id="admin-orders" class="hidden"></div>
+    <div id="admin-stats" class="hidden"></div>
+    <div id="admin-logs" class="hidden"></div>
+    <div id="admin-wishlist" class="hidden"></div>
+    <div id="admin-users" class="hidden"></div>
+  `;
+  loadAdminProducts();
+  checkLowStock();
+}
+
+function switchAdminTab(name, btn) {
+  $$('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['products','machines','inventory','orders','stats','logs','wishlist','users'].forEach(t => {
+    $(`#admin-${t}`).classList.add('hidden');
+  });
+  $(`#admin-${name}`).classList.remove('hidden');
+  const loaders = {
+    products: loadAdminProducts, machines: loadAdminMachines,
+    inventory: loadAdminInventory, orders: loadAdminOrders,
+    stats: loadAdminStats, logs: loadAdminLogs, wishlist: loadAdminWishes, users: loadAdminUsers
+  };
+  if (loaders[name]) loaders[name]();
+}
+
+async function checkLowStock() {
+  const res = await api('/api/admin/low-stock');
+  if (res.ok && res.data.length > 0) {
+    const items = res.data.map(it => `${it.machine_name} - ${it.product_name} (${it.quantity}/${it.warning_threshold})`).join('；');
+    showAlert('warning', `库存预警：${items}`);
+  }
+}
+
+// -- Admin: Products --
+async function loadAdminProducts() {
+  const res = await api('/api/admin/products');
+  let html = `<div class="flex-between-wrap mb-2"><h3>商品列表</h3><button class="btn btn-primary btn-sm" onclick="showAddProduct()">+ 添加商品</button></div>`;
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无商品</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>ID</th><th>名称</th><th>分类</th><th>单价</th><th>描述</th><th></th></tr></thead><tbody>';
+    for (const p of res.data) {
+      html += `<tr>
+        <td>${p.product_id}</td><td>${p.name}</td><td>${p.category||'-'}</td>
+        <td>¥${p.price.toFixed(2)}</td><td>${p.description||'-'}</td>
+        <td>
+          <button class="btn btn-outline btn-xs" onclick="showEditProduct(${p.product_id},'${p.name}','${(p.category||'').replace(/'/g,"\\'")}','${(p.description||'').replace(/'/g,"\\'")}',${p.price})">编辑</button>
+          <button class="btn btn-danger btn-xs" onclick="deleteProduct(${p.product_id},'${p.name}')">删除</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-products').innerHTML = html;
+}
+
+function showAddProduct() {
+  openModal('添加商品', `
+    <div class="form-group"><label>名称</label><input class="form-control" id="prod-name"></div>
+    <div class="form-group"><label>分类</label><input class="form-control" id="prod-cat"></div>
+    <div class="form-group"><label>描述</label><input class="form-control" id="prod-desc"></div>
+    <div class="form-group"><label>单价</label><input class="form-control" id="prod-price" type="number" step="0.01" min="0.01"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">保存</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const name = $('#prod-name').value.trim();
+    const price = parseFloat($('#prod-price').value);
+    if (!name || !price || price <= 0) { showAlert('error', '请填写名称和有效单价'); return false; }
+    const res = await api('/api/admin/products', { method: 'POST', body: JSON.stringify({
+      name, category: $('#prod-cat').value.trim(), description: $('#prod-desc').value.trim(), price
+    })});
+    if (res.ok) { showAlert('success', res.message); loadAdminProducts(); }
+    else showAlert('error', res.message);
+  });
+}
+
+function showEditProduct(id, name, cat, desc, price) {
+  openModal('编辑商品', `
+    <div class="form-group"><label>名称</label><input class="form-control" id="prod-name" value="${name}"></div>
+    <div class="form-group"><label>分类</label><input class="form-control" id="prod-cat" value="${cat}"></div>
+    <div class="form-group"><label>描述</label><input class="form-control" id="prod-desc" value="${desc}"></div>
+    <div class="form-group"><label>单价</label><input class="form-control" id="prod-price" type="number" step="0.01" value="${price}"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">保存</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const pname = $('#prod-name').value.trim();
+    const pprice = parseFloat($('#prod-price').value);
+    if (!pname || !pprice || pprice <= 0) { showAlert('error', '请填写名称和有效单价'); return false; }
+    const res = await api(`/api/admin/products/${id}`, { method: 'PUT', body: JSON.stringify({
+      name: pname, category: $('#prod-cat').value.trim(), description: $('#prod-desc').value.trim(), price: pprice
+    })});
+    if (res.ok) { showAlert('success', res.message); loadAdminProducts(); }
+    else showAlert('error', res.message);
+  });
+}
+
+async function deleteProduct(id, name) {
+  if (!confirm(`确定删除商品「${name}」？`)) return;
+  const res = await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+  if (res.ok) { showAlert('success', res.message); loadAdminProducts(); }
+  else showAlert('error', res.message);
+}
+
+// -- Admin: Machines --
+async function loadAdminMachines() {
+  const res = await api('/api/admin/machines');
+  let html = `<div class="flex-between-wrap mb-2"><h3>售货机列表</h3><button class="btn btn-primary btn-sm" onclick="showAddMachine()">+ 添加售货机</button></div>`;
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无售货机</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>ID</th><th>名称</th><th>位置</th><th>状态</th><th>容量</th><th></th></tr></thead><tbody>';
+    for (const m of res.data) {
+      const badge = m.status === 'online' ? 'badge-online' : m.status === 'offline' ? 'badge-offline' : 'badge-maintenance';
+      const statusText = { online: '在线', offline: '离线', maintenance: '维护中' }[m.status] || m.status;
+      html += `<tr>
+        <td>${m.machine_id}</td><td>${m.name}</td><td>${m.location||'-'}</td>
+        <td><span class="badge ${badge}">${statusText}</span></td>
+        <td>${m.capacity}</td>
+        <td>
+          <select class="form-control" style="width:auto;display:inline;padding:4px 8px;font-size:12px" onchange="updateMachineStatus(${m.machine_id},this.value)">
+            <option value="">切换状态</option>
+            <option value="online">在线</option>
+            <option value="offline">离线</option>
+            <option value="maintenance">维护中</option>
+          </select>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-machines').innerHTML = html;
+}
+
+function showAddMachine() {
+  openModal('添加售货机', `
+    <div class="form-group"><label>名称</label><input class="form-control" id="mc-name"></div>
+    <div class="form-group"><label>位置</label><input class="form-control" id="mc-loc"></div>
+    <div class="form-group"><label>容量</label><input class="form-control" id="mc-cap" type="number" value="100"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">保存</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const name = $('#mc-name').value.trim();
+    if (!name) { showAlert('error', '名称不能为空'); return false; }
+    const res = await api('/api/admin/machines', { method: 'POST', body: JSON.stringify({
+      name, location: $('#mc-loc').value.trim(), capacity: parseInt($('#mc-cap').value)||100
+    })});
+    if (res.ok) { showAlert('success', res.message); loadAdminMachines(); }
+    else showAlert('error', res.message);
+  });
+}
+
+async function updateMachineStatus(id, status) {
+  if (!status) return;
+  const statusText = { online: '在线', offline: '离线', maintenance: '维护中' }[status];
+  if (!confirm(`确定将该售货机状态改为「${statusText}」？`)) { loadAdminMachines(); return; }
+  const res = await api(`/api/admin/machines/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  if (res.ok) showAlert('success', res.message);
+  else showAlert('error', res.message);
+  loadAdminMachines();
+}
+
+// -- Admin: Inventory --
+async function loadAdminInventory() {
+  const machinesRes = await api('/api/admin/machines');
+  let html = `<div class="flex-between-wrap mb-2"><h3>库存管理</h3></div>`;
+  if (!machinesRes.ok || machinesRes.data.length === 0) {
+    html += '<div class="empty">暂无售货机</div>';
+  } else {
+    html += '<div class="form-group"><label>选择售货机</label><select class="form-control" id="inv-machine" onchange="loadInventoryForMachine()"><option value="">-- 请选择 --</option>';
+    for (const m of machinesRes.data) {
+      html += `<option value="${m.machine_id}">#${m.machine_id} ${m.name} (${m.location||'-'})</option>`;
+    }
+    html += '</select></div><div id="inv-detail"></div>';
+  }
+  $('#admin-inventory').innerHTML = html;
+}
+
+async function loadInventoryForMachine() {
+  const mid = $('#inv-machine').value;
+  if (!mid) { $('#inv-detail').innerHTML = ''; return; }
+  const res = await api(`/api/admin/inventory?machine_id=${mid}`);
+  let html = '';
+  if (!res.ok || res.data.length === 0) {
+    html = '<div class="empty">该售货机暂无库存，请在下方添加</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>商品</th><th>单价</th><th>库存</th><th>最大容量</th><th>预警阈值</th><th></th></tr></thead><tbody>';
+    for (const it of res.data) {
+      const low = it.quantity < it.warning_threshold ? ' text-danger' : '';
+      html += `<tr>
+        <td>${it.product_name}</td><td>¥${it.price.toFixed(2)}</td>
+        <td class="${low}"><strong>${it.quantity}</strong></td>
+        <td>${it.max_quantity}</td>
+        <td>${it.warning_threshold}</td>
+        <td>
+          <button class="btn btn-outline btn-xs" onclick="showSetStock(${it.machine_id},${it.product_id},'${it.product_name}',${it.quantity})">设库存</button>
+          <button class="btn btn-outline btn-xs" onclick="showRestock(${it.machine_id},${it.product_id},'${it.product_name}')">补货</button>
+          <button class="btn btn-outline btn-xs" onclick="showSetThreshold(${it.machine_id},${it.product_id},'${it.product_name}',${it.warning_threshold})">阈值</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  // Quick add
+  html += `<div class="card mt-3"><h3>上架新商品到该售货机</h3>
+    <div class="form-row"><div class="form-group"><label>商品ID</label><input class="form-control" id="restock-pid" type="number"></div>
+    <div class="form-group"><label>数量</label><input class="form-control" id="restock-qty" type="number" value="30"></div></div>
+    <button class="btn btn-primary btn-sm" onclick="doRestock(${mid})">上架</button>
+  </div>`;
+  $('#inv-detail').innerHTML = html;
+}
+
+function showSetStock(mid, pid, pname, cur) {
+  openModal(`设置库存 - ${pname}`, `
+    <div class="form-group"><label>新库存数量</label><input class="form-control" id="new-stock" type="number" min="0" value="${cur}"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">保存</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const qty = parseInt($('#new-stock').value);
+    if (isNaN(qty) || qty < 0) { showAlert('error', '请输入有效数量'); return false; }
+    const res = await api('/api/admin/inventory/stock', { method: 'PUT', body: JSON.stringify({ machine_id: mid, product_id: pid, quantity: qty }) });
+    if (res.ok) { showAlert('success', res.message); loadInventoryForMachine(); }
+    else showAlert('error', res.message);
+  });
+}
+
+function showRestock(mid, pid, pname) {
+  openModal(`补货 - ${pname}`, `
+    <div class="form-group"><label>补货数量</label><input class="form-control" id="restock-amount" type="number" min="1" value="10"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">确认补货</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const qty = parseInt($('#restock-amount').value);
+    if (!qty || qty <= 0) { showAlert('error', '请输入有效数量'); return false; }
+    const res = await api('/api/admin/inventory/restock', { method: 'POST', body: JSON.stringify({ machine_id: mid, product_id: pid, quantity: qty }) });
+    if (res.ok) { showAlert('success', res.message); loadInventoryForMachine(); }
+    else showAlert('error', res.message);
+  });
+}
+
+function showSetThreshold(mid, pid, pname, cur) {
+  openModal(`设置预警阈值 - ${pname}`, `
+    <div class="form-group"><label>预警阈值</label><input class="form-control" id="new-threshold" type="number" min="0" value="${cur}"></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">保存</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const t = parseInt($('#new-threshold').value);
+    if (isNaN(t) || t < 0) { showAlert('error', '请输入有效阈值'); return false; }
+    const res = await api('/api/admin/inventory/threshold', { method: 'PUT', body: JSON.stringify({ machine_id: mid, product_id: pid, threshold: t }) });
+    if (res.ok) { showAlert('success', res.message); loadInventoryForMachine(); }
+    else showAlert('error', res.message);
+  });
+}
+
+async function doRestock(mid) {
+  const pid = parseInt($('#restock-pid').value);
+  const qty = parseInt($('#restock-qty').value);
+  if (!pid || !qty || qty <= 0) { showAlert('error', '请输入有效商品ID和数量'); return; }
+  const res = await api('/api/admin/inventory/restock', { method: 'POST', body: JSON.stringify({ machine_id: mid, product_id: pid, quantity: qty }) });
+  if (res.ok) { showAlert('success', res.message); loadInventoryForMachine(); }
+  else showAlert('error', res.message);
+}
+
+// -- Admin: Orders --
+async function loadAdminOrders() {
+  const res = await api('/api/admin/orders');
+  let html = '<h3>全部订单（最近50条）</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无订单</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>用户</th><th>售货机</th><th>金额</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>';
+    for (const o of res.data) {
+      html += `<tr>
+        <td>#${o.order_id}</td><td>${o.username}</td><td>${o.machine_name}</td>
+        <td>¥${o.total_amount.toFixed(2)}</td><td>${o.status}</td><td>${o.created_at}</td>
+        <td><button class="btn btn-outline btn-xs" onclick="viewOrderDetail(${o.order_id})">详情</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-orders').innerHTML = html;
+}
+
+// -- Admin: Stats --
+async function loadAdminStats() {
+  const [prodRes, timeRes] = await Promise.all([
+    api('/api/admin/stats/products'),
+    api('/api/admin/stats/time')
+  ]);
+  let html = '<h3>销售统计</h3>';
+
+  // By product
+  html += '<h4 class="mt-3">按商品统计</h4>';
+  if (prodRes.ok && prodRes.data.length > 0) {
+    // Summary cards
+    const totalQty = prodRes.data.reduce((s,r)=>s+(r.total_quantity||0), 0);
+    const totalRev = prodRes.data.reduce((s,r)=>s+(r.total_revenue||0), 0);
+    html += `<div class="stat-grid">
+      <div class="stat-card"><div class="stat-value">${prodRes.data.length}</div><div class="stat-label">商品种类</div></div>
+      <div class="stat-card"><div class="stat-value">${totalQty}</div><div class="stat-label">总销量（件）</div></div>
+      <div class="stat-card"><div class="stat-value">¥${totalRev.toFixed(2)}</div><div class="stat-label">总销售额</div></div>
+    </div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>商品</th><th>销量</th><th>销售额</th></tr></thead><tbody>';
+    for (const r of prodRes.data) {
+      html += `<tr><td>${r.product_name}</td><td>${r.total_quantity||0}</td><td>¥${(r.total_revenue||0).toFixed(2)}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  } else { html += '<div class="empty">暂无销售数据</div>'; }
+
+  // By time
+  html += '<h4 class="mt-4">按日期统计</h4>';
+  if (timeRes.ok && timeRes.data.length > 0) {
+    html += '<div class="table-wrap"><table><thead><tr><th>日期</th><th>销量</th><th>销售额</th></tr></thead><tbody>';
+    for (const r of timeRes.data) {
+      html += `<tr><td>${r.stat_date}</td><td>${r.total_quantity||0}</td><td>¥${(r.total_revenue||0).toFixed(2)}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  } else { html += '<div class="empty">暂无数据</div>'; }
+
+  $('#admin-stats').innerHTML = html;
+}
+
+// -- Admin: Logs --
+async function loadAdminLogs() {
+  const res = await api('/api/admin/logs');
+  let html = '<h3>操作日志（最近50条）</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无日志</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>ID</th><th>管理员</th><th>操作</th><th>对象</th><th>详情</th><th>时间</th></tr></thead><tbody>';
+    for (const l of res.data) {
+      html += `<tr><td>${l.log_id}</td><td>${l.username}</td><td>${l.action}</td><td>${l.target||'-'}</td><td>${l.details||'-'}</td><td>${l.created_at}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-logs').innerHTML = html;
+}
+
+// -- Admin: Wishlist --
+async function loadAdminWishes() {
+  const res = await api('/api/admin/wishlist');
+  let html = '<h3>用户心愿单</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无心愿</div>';
+  } else {
+    const statusBadge = { pending: 'badge-maintenance', approved: 'badge-online', rejected: 'badge-offline' };
+    html += '<div class="table-wrap"><table><thead><tr><th>ID</th><th>用户</th><th>商品名称</th><th>分类</th><th>描述</th><th>状态</th><th>备注</th><th>时间</th><th></th></tr></thead><tbody>';
+    for (const w of res.data) {
+      html += `<tr>
+        <td>${w.wish_id}</td><td>${w.username}</td><td><strong>${w.product_name}</strong></td>
+        <td>${w.category||'-'}</td><td>${w.description||'-'}</td>
+        <td><span class="badge ${statusBadge[w.status]||''}">${w.status_text}</span></td>
+        <td class="text-muted">${w.admin_note||'-'}</td><td>${w.created_at}</td>
+        <td>${w.status === 'pending' ? `
+          <button class="btn btn-success btn-xs mr-2" onclick="handleWish(${w.wish_id},'approved')">采纳</button>
+          <button class="btn btn-danger btn-xs" onclick="handleWish(${w.wish_id},'rejected')">拒绝</button>
+        ` : '-'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-wishlist').innerHTML = html;
+}
+
+async function handleWish(wishId, status) {
+  const note = status === 'approved' ? '已采纳，将尽快上架' : '';
+  const actionText = status === 'approved' ? '采纳' : '拒绝';
+  openModal(`${actionText}心愿 #${wishId}`, `
+    <div class="form-group"><label>管理员备注</label><textarea class="form-control" id="wish-note" rows="3">${note}</textarea></div>
+    <div class="btn-group"><button class="btn btn-primary btn-save">确认${actionText}</button><button class="btn btn-outline" onclick="closeModal()">取消</button></div>
+  `, async () => {
+    const res = await api(`/api/admin/wishlist/${wishId}`, { method: 'PUT', body: JSON.stringify({
+      status, admin_note: $('#wish-note').value.trim()
+    })});
+    if (res.ok) { showAlert('success', res.message); loadAdminWishes(); }
+    else showAlert('error', res.message);
+  });
+}
+
+// -- Admin: Users --
+async function loadAdminUsers() {
+  const res = await api('/api/admin/users');
+  let html = '<h3>用户列表</h3>';
+  if (!res.ok || res.data.length === 0) {
+    html += '<div class="empty">暂无用户</div>';
+  } else {
+    html += '<div class="table-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>余额</th><th>手机</th><th>邮箱</th><th>注册时间</th></tr></thead><tbody>';
+    for (const u of res.data) {
+      html += `<tr>
+        <td>${u.user_id}</td><td>${u.username}</td>
+        <td><span class="badge ${u.role==='admin'?'badge-admin':'badge-user'}">${u.role}</span></td>
+        <td>¥${u.balance.toFixed(2)}</td><td>${u.phone||'-'}</td><td>${u.email||'-'}</td><td>${u.created_at}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  $('#admin-users').innerHTML = html;
+}
+
+// ============================================================
+// Start
+// ============================================================
+init();
+</script>
+</body>
+</html>
